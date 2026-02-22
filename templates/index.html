@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskFlow</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ===== Sidebar ===== -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <span class="logo">&#9635; TaskFlow</span>
+  </div>
+
+  <nav class="sidebar-nav">
+    <button class="nav-item active" id="btn-all-tasks" onclick="selectProject(null)">
+      <span class="nav-icon">&#9741;</span> All Tasks
+      <span class="nav-badge" id="badge-all"></span>
+    </button>
+  </nav>
+
+  <div class="sidebar-section-title">
+    Projects
+    <button class="btn-icon" title="New project" onclick="openProjectModal(null)">&#43;</button>
+  </div>
+  <div id="project-list"></div>
+</aside>
+
+<!-- ===== Main content ===== -->
+<main class="main-content">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1 class="view-title" id="view-title">All Tasks</h1>
+      <span class="view-subtitle" id="view-subtitle"></span>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-primary" id="btn-add-task" onclick="openTaskModal(null)" style="display:none">
+        &#43; Add Task
+      </button>
+      <button class="btn btn-ghost" id="btn-edit-project" onclick="editCurrentProject()" style="display:none" title="Edit project">
+        &#9998;
+      </button>
+      <button class="btn btn-ghost btn-danger" id="btn-delete-project" onclick="deleteCurrentProject()" style="display:none" title="Delete project">
+        &#128465;
+      </button>
+    </div>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <input class="filter-input" type="search" id="search" placeholder="Search tasks…" oninput="applyFilters()" />
+    <select class="filter-select" id="filter-status" onchange="applyFilters()">
+      <option value="all">All statuses</option>
+      <option value="todo">To Do</option>
+      <option value="in_progress">In Progress</option>
+      <option value="done">Done</option>
+    </select>
+    <select class="filter-select" id="filter-priority" onchange="applyFilters()">
+      <option value="all">All priorities</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+  </div>
+
+  <!-- Task list -->
+  <div id="task-list"></div>
+
+  <!-- Empty state -->
+  <div class="empty-state" id="empty-state" style="display:none">
+    <div class="empty-icon">&#128203;</div>
+    <p class="empty-title">No tasks yet</p>
+    <p class="empty-sub" id="empty-sub">Select a project and add your first task.</p>
+  </div>
+
+</main>
+
+<!-- ===== Project modal ===== -->
+<div class="modal-overlay" id="project-modal" onclick="closeModal('project-modal')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 class="modal-title" id="project-modal-title">New Project</h2>
+      <button class="btn-close" onclick="closeModal('project-modal')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <label class="form-label" for="project-name">Name *</label>
+      <input class="form-input" id="project-name" type="text" placeholder="e.g. Website Redesign" maxlength="120" />
+      <label class="form-label" for="project-desc">Description</label>
+      <textarea class="form-input" id="project-desc" rows="3" placeholder="Optional description…"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('project-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveProject()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Task modal ===== -->
+<div class="modal-overlay" id="task-modal" onclick="closeModal('task-modal')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 class="modal-title" id="task-modal-title">New Task</h2>
+      <button class="btn-close" onclick="closeModal('task-modal')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <label class="form-label" for="task-title">Title *</label>
+      <input class="form-input" id="task-title" type="text" placeholder="e.g. Design landing page" maxlength="200" />
+
+      <label class="form-label" for="task-desc">Description</label>
+      <textarea class="form-input" id="task-desc" rows="3" placeholder="Optional details…"></textarea>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="task-priority">Priority</label>
+          <select class="form-input" id="task-priority">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="task-status">Status</label>
+          <select class="form-input" id="task-status">
+            <option value="todo" selected>To Do</option>
+            <option value="in_progress">In Progress</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="task-project">Project *</label>
+          <select class="form-input" id="task-project"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="task-due">Due Date</label>
+          <input class="form-input" id="task-due" type="date" />
+        </div>
+      </div>
+
+      <label class="form-label" for="task-tags">Tags <span class="hint">(comma-separated)</span></label>
+      <input class="form-input" id="task-tags" type="text" placeholder="e.g. design, frontend, urgent" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('task-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTask()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Confirm modal ===== -->
+<div class="modal-overlay" id="confirm-modal" onclick="closeModal('confirm-modal')">
+  <div class="modal modal-sm" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 class="modal-title" id="confirm-title">Confirm</h2>
+      <button class="btn-close" onclick="closeModal('confirm-modal')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-message"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('confirm-modal')">Cancel</button>
+      <button class="btn btn-primary btn-danger" id="confirm-ok">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
