@@ -3,29 +3,30 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TaskFlow</title>
+  <title>Zettelkasten</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
 
 <!-- ===== Sidebar ===== -->
-<aside class="sidebar" id="sidebar">
+<aside class="sidebar">
   <div class="sidebar-header">
-    <span class="logo">&#9635; TaskFlow</span>
+    <span class="logo">&#9670; Zettelkasten</span>
+    <button class="btn-new-note" onclick="openNoteModal(null)" title="New concept">&#43; New</button>
   </div>
 
-  <nav class="sidebar-nav">
-    <button class="nav-item active" id="btn-all-tasks" onclick="selectProject(null)">
-      <span class="nav-icon">&#9741;</span> All Tasks
-      <span class="nav-badge" id="badge-all"></span>
-    </button>
-  </nav>
+  <div class="sidebar-search">
+    <input class="search-input" type="search" id="search" placeholder="Search concepts…" oninput="applyFilters()" />
+  </div>
+
+  <div class="tag-filter-bar" id="tag-filter-bar"></div>
 
   <div class="sidebar-section-title">
-    Projects
-    <button class="btn-icon" title="New project" onclick="openProjectModal(null)">&#43;</button>
+    <span>Concepts</span>
+    <span class="note-count" id="note-count">0</span>
   </div>
-  <div id="project-list"></div>
+
+  <div id="note-list" class="note-list"></div>
 </aside>
 
 <!-- ===== Main content ===== -->
@@ -33,122 +34,141 @@
 
   <!-- Topbar -->
   <div class="topbar">
-    <div class="topbar-left">
-      <h1 class="view-title" id="view-title">All Tasks</h1>
-      <span class="view-subtitle" id="view-subtitle"></span>
+    <div class="view-toggle">
+      <button class="view-btn active" id="btn-notes-view" onclick="setView('notes')">
+        &#9741; Notes
+      </button>
+      <button class="view-btn" id="btn-graph-view" onclick="setView('graph')">
+        &#9675; Graph
+      </button>
     </div>
-    <div class="topbar-right">
-      <button class="btn btn-primary" id="btn-add-task" onclick="openTaskModal(null)" style="display:none">
-        &#43; Add Task
+    <div class="topbar-actions" id="topbar-actions" style="display:none">
+      <button class="btn btn-ghost btn-sm" onclick="openNoteModal(state.selectedNoteId)" title="Edit concept">
+        &#9998; Edit
       </button>
-      <button class="btn btn-ghost" id="btn-edit-project" onclick="editCurrentProject()" style="display:none" title="Edit project">
-        &#9998;
-      </button>
-      <button class="btn btn-ghost btn-danger" id="btn-delete-project" onclick="deleteCurrentProject()" style="display:none" title="Delete project">
-        &#128465;
+      <button class="btn btn-ghost btn-sm btn-danger" onclick="deleteSelectedNote()" title="Delete concept">
+        &#128465; Delete
       </button>
     </div>
   </div>
 
-  <!-- Filter bar -->
-  <div class="filter-bar">
-    <input class="filter-input" type="search" id="search" placeholder="Search tasks…" oninput="applyFilters()" />
-    <select class="filter-select" id="filter-status" onchange="applyFilters()">
-      <option value="all">All statuses</option>
-      <option value="todo">To Do</option>
-      <option value="in_progress">In Progress</option>
-      <option value="done">Done</option>
-    </select>
-    <select class="filter-select" id="filter-priority" onchange="applyFilters()">
-      <option value="all">All priorities</option>
-      <option value="high">High</option>
-      <option value="medium">Medium</option>
-      <option value="low">Low</option>
-    </select>
+  <!-- ── Notes view ── -->
+  <div id="notes-view">
+
+    <!-- Empty state: no notes exist -->
+    <div class="empty-state" id="empty-welcome" style="display:none">
+      <div class="empty-icon">&#9670;</div>
+      <p class="empty-title">Your knowledge base is empty</p>
+      <p class="empty-sub">Create your first concept to get started.</p>
+      <button class="btn btn-primary" onclick="openNoteModal(null)">&#43; New Concept</button>
+    </div>
+
+    <!-- Empty state: no note selected -->
+    <div class="empty-state" id="empty-select" style="display:none">
+      <div class="empty-icon">&#128196;</div>
+      <p class="empty-title">Select a concept</p>
+      <p class="empty-sub">Pick a concept from the sidebar or create a new one.</p>
+    </div>
+
+    <!-- Note detail -->
+    <div class="note-detail" id="note-detail" style="display:none">
+      <div class="note-detail-header">
+        <h1 class="note-detail-title" id="detail-title"></h1>
+        <div class="note-detail-meta">
+          <span class="meta-item" id="detail-created"></span>
+          <span class="meta-item" id="detail-updated"></span>
+        </div>
+        <div class="note-tags" id="detail-tags"></div>
+      </div>
+
+      <div class="note-detail-content" id="detail-content"></div>
+
+      <div class="note-links-section">
+        <div class="links-header">
+          <span class="links-title">&#128279; Linked Concepts</span>
+          <button class="btn btn-ghost btn-sm" onclick="openLinkPicker()" id="btn-add-link">
+            &#43; Link
+          </button>
+        </div>
+        <div class="linked-notes" id="linked-notes"></div>
+        <div class="no-links" id="no-links" style="display:none">
+          No links yet. Connect this concept to others.
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Task list -->
-  <div id="task-list"></div>
+  <!-- ── Graph view ── -->
+  <div id="graph-view" style="display:none">
+    <div class="graph-container" id="graph-container">
+      <canvas id="graph-canvas"></canvas>
 
-  <!-- Empty state -->
-  <div class="empty-state" id="empty-state" style="display:none">
-    <div class="empty-icon">&#128203;</div>
-    <p class="empty-title">No tasks yet</p>
-    <p class="empty-sub" id="empty-sub">Select a project and add your first task.</p>
+      <!-- Graph controls -->
+      <div class="graph-controls">
+        <button class="graph-btn" onclick="graphZoomIn()" title="Zoom in">&#43;</button>
+        <button class="graph-btn" onclick="graphZoomOut()" title="Zoom out">&#8722;</button>
+        <button class="graph-btn" onclick="graphFit()" title="Fit all">&#9633;</button>
+      </div>
+
+      <!-- Graph legend -->
+      <div class="graph-legend" id="graph-legend"></div>
+
+      <!-- Node info card (shown on click) -->
+      <div class="graph-info-card" id="graph-info-card" style="display:none">
+        <button class="info-card-close" onclick="closeInfoCard()">&#215;</button>
+        <div class="info-card-title" id="info-card-title"></div>
+        <div class="info-card-tags" id="info-card-tags"></div>
+        <div class="info-card-preview" id="info-card-preview"></div>
+        <button class="btn btn-primary btn-sm" onclick="openNoteFromGraph()">Open Note</button>
+      </div>
+
+      <!-- Empty graph state -->
+      <div class="graph-empty" id="graph-empty" style="display:none">
+        <div class="empty-icon">&#9675;</div>
+        <p class="empty-title">No concepts to map</p>
+        <p class="empty-sub">Add some concepts and links to see the graph.</p>
+      </div>
+    </div>
   </div>
 
 </main>
 
-<!-- ===== Project modal ===== -->
-<div class="modal-overlay" id="project-modal" onclick="closeModal('project-modal')">
+<!-- ===== Note modal (create / edit) ===== -->
+<div class="modal-overlay" id="note-modal" onclick="closeModal('note-modal')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-header">
-      <h2 class="modal-title" id="project-modal-title">New Project</h2>
-      <button class="btn-close" onclick="closeModal('project-modal')">&#215;</button>
+      <h2 class="modal-title" id="note-modal-title">New Concept</h2>
+      <button class="btn-close" onclick="closeModal('note-modal')">&#215;</button>
     </div>
     <div class="modal-body">
-      <label class="form-label" for="project-name">Name *</label>
-      <input class="form-input" id="project-name" type="text" placeholder="e.g. Website Redesign" maxlength="120" />
-      <label class="form-label" for="project-desc">Description</label>
-      <textarea class="form-input" id="project-desc" rows="3" placeholder="Optional description…"></textarea>
+      <label class="form-label" for="note-title">Title *</label>
+      <input class="form-input" id="note-title" type="text" placeholder="Concept name…" maxlength="200" />
+
+      <label class="form-label" for="note-content">Content</label>
+      <textarea class="form-input note-content-input" id="note-content" rows="10"
+        placeholder="Write your concept here. Use **bold**, _italic_, # Heading for formatting.&#10;&#10;Reference other notes with [[Note Title]]."></textarea>
+
+      <label class="form-label" for="note-tags">Tags <span class="hint">(comma-separated)</span></label>
+      <input class="form-input" id="note-tags" type="text" placeholder="e.g. philosophy, science, literature" />
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('project-modal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveProject()">Save</button>
+      <button class="btn btn-ghost" onclick="closeModal('note-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveNote()">Save</button>
     </div>
   </div>
 </div>
 
-<!-- ===== Task modal ===== -->
-<div class="modal-overlay" id="task-modal" onclick="closeModal('task-modal')">
-  <div class="modal" onclick="event.stopPropagation()">
+<!-- ===== Link picker modal ===== -->
+<div class="modal-overlay" id="link-modal" onclick="closeModal('link-modal')">
+  <div class="modal modal-sm" onclick="event.stopPropagation()">
     <div class="modal-header">
-      <h2 class="modal-title" id="task-modal-title">New Task</h2>
-      <button class="btn-close" onclick="closeModal('task-modal')">&#215;</button>
+      <h2 class="modal-title">Link to Concept</h2>
+      <button class="btn-close" onclick="closeModal('link-modal')">&#215;</button>
     </div>
     <div class="modal-body">
-      <label class="form-label" for="task-title">Title *</label>
-      <input class="form-input" id="task-title" type="text" placeholder="e.g. Design landing page" maxlength="200" />
-
-      <label class="form-label" for="task-desc">Description</label>
-      <textarea class="form-input" id="task-desc" rows="3" placeholder="Optional details…"></textarea>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="task-priority">Priority</label>
-          <select class="form-input" id="task-priority">
-            <option value="low">Low</option>
-            <option value="medium" selected>Medium</option>
-            <option value="high">High</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="task-status">Status</label>
-          <select class="form-input" id="task-status">
-            <option value="todo" selected>To Do</option>
-            <option value="in_progress">In Progress</option>
-            <option value="done">Done</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="task-project">Project *</label>
-          <select class="form-input" id="task-project"></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="task-due">Due Date</label>
-          <input class="form-input" id="task-due" type="date" />
-        </div>
-      </div>
-
-      <label class="form-label" for="task-tags">Tags <span class="hint">(comma-separated)</span></label>
-      <input class="form-input" id="task-tags" type="text" placeholder="e.g. design, frontend, urgent" />
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('task-modal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveTask()">Save</button>
+      <input class="form-input" id="link-search" type="search" placeholder="Search concepts…" oninput="filterLinkPicker()" />
+      <div class="link-picker-list" id="link-picker-list"></div>
     </div>
   </div>
 </div>

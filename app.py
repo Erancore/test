@@ -3,7 +3,7 @@ import sqlite3
 from flask import Flask, g, jsonify, render_template, request
 
 app = Flask(__name__)
-DATABASE = "tasks.db"
+DATABASE = "zettelkasten.db"
 
 
 # ---------------------------------------------------------------------------
@@ -30,25 +30,20 @@ def init_db():
     db.execute("PRAGMA foreign_keys = ON")
     db.executescript(
         """
-        CREATE TABLE IF NOT EXISTS projects (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT NOT NULL,
-            description TEXT NOT NULL DEFAULT '',
-            created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        CREATE TABLE IF NOT EXISTS notes (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            title      TEXT NOT NULL,
+            content    TEXT NOT NULL DEFAULT '',
+            tags       TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
-        CREATE TABLE IF NOT EXISTS tasks (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-            title       TEXT NOT NULL,
-            description TEXT NOT NULL DEFAULT '',
-            priority    TEXT NOT NULL DEFAULT 'medium'
-                        CHECK(priority IN ('low', 'medium', 'high')),
-            status      TEXT NOT NULL DEFAULT 'todo'
-                        CHECK(status IN ('todo', 'in_progress', 'done')),
-            due_date    TEXT,
-            tags        TEXT NOT NULL DEFAULT '[]',
-            created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        CREATE TABLE IF NOT EXISTS links (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            target_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            UNIQUE(source_id, target_id)
         );
         """
     )
@@ -76,173 +71,167 @@ def index():
 
 
 # ---------------------------------------------------------------------------
-# Routes – Projects
+# Routes – Notes
 # ---------------------------------------------------------------------------
 
-@app.route("/api/projects", methods=["GET"])
-def list_projects():
+@app.route("/api/notes", methods=["GET"])
+def list_notes():
     db = get_db()
-    rows = db.execute(
-        "SELECT * FROM projects ORDER BY created_at DESC"
-    ).fetchall()
+    rows = db.execute("SELECT * FROM notes ORDER BY updated_at DESC").fetchall()
     result = []
     for row in rows:
         d = row_to_dict(row)
-        d["task_count"] = db.execute(
-            "SELECT COUNT(*) FROM tasks WHERE project_id = ?", (d["id"],)
-        ).fetchone()[0]
-        d["done_count"] = db.execute(
-            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'done'",
-            (d["id"],),
+        d["link_count"] = db.execute(
+            "SELECT COUNT(*) FROM links WHERE source_id=? OR target_id=?",
+            (d["id"], d["id"]),
         ).fetchone()[0]
         result.append(d)
     return jsonify(result)
 
 
-@app.route("/api/projects", methods=["POST"])
-def create_project():
+@app.route("/api/notes", methods=["POST"])
+def create_note():
     data = request.get_json(force=True)
-    name = (data.get("name") or "").strip()
-    if not name:
-        return jsonify({"error": "Name is required"}), 400
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "Title is required"}), 400
+    tags = json.dumps([t.strip() for t in data.get("tags", []) if str(t).strip()])
     db = get_db()
     cur = db.execute(
-        "INSERT INTO projects (name, description) VALUES (?, ?)",
-        (name, data.get("description", "")),
+        "INSERT INTO notes (title, content, tags) VALUES (?, ?, ?)",
+        (title, data.get("content", ""), tags),
     )
     db.commit()
     d = row_to_dict(
-        db.execute("SELECT * FROM projects WHERE id = ?", (cur.lastrowid,)).fetchone()
+        db.execute("SELECT * FROM notes WHERE id=?", (cur.lastrowid,)).fetchone()
     )
-    d["task_count"] = 0
-    d["done_count"] = 0
+    d["link_count"] = 0
     return jsonify(d), 201
 
 
-@app.route("/api/projects/<int:pid>", methods=["PUT"])
-def update_project(pid):
+@app.route("/api/notes/<int:nid>", methods=["GET"])
+def get_note(nid):
+    db = get_db()
+    row = db.execute("SELECT * FROM notes WHERE id=?", (nid,)).fetchone()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+    d = row_to_dict(row)
+    linked = db.execute(
+        """
+        SELECT n.id, n.title, n.tags FROM notes n
+        JOIN links l ON (l.source_id=n.id AND l.target_id=?)
+                     OR (l.target_id=n.id AND l.source_id=?)
+        ORDER BY n.title
+        """,
+        (nid, nid),
+    ).fetchall()
+    d["linked_notes"] = [row_to_dict(r) for r in linked]
+    d["link_count"] = len(d["linked_notes"])
+    return jsonify(d)
+
+
+@app.route("/api/notes/<int:nid>", methods=["PUT"])
+def update_note(nid):
     data = request.get_json(force=True)
-    name = (data.get("name") or "").strip()
-    if not name:
-        return jsonify({"error": "Name is required"}), 400
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "Title is required"}), 400
+    tags = json.dumps([t.strip() for t in data.get("tags", []) if str(t).strip()])
     db = get_db()
     db.execute(
-        "UPDATE projects SET name = ?, description = ? WHERE id = ?",
-        (name, data.get("description", ""), pid),
+        "UPDATE notes SET title=?, content=?, tags=?, updated_at=datetime('now') WHERE id=?",
+        (title, data.get("content", ""), tags, nid),
     )
     db.commit()
-    return jsonify(
-        row_to_dict(
-            db.execute("SELECT * FROM projects WHERE id = ?", (pid,)).fetchone()
-        )
-    )
+    d = row_to_dict(db.execute("SELECT * FROM notes WHERE id=?", (nid,)).fetchone())
+    linked = db.execute(
+        """
+        SELECT n.id, n.title, n.tags FROM notes n
+        JOIN links l ON (l.source_id=n.id AND l.target_id=?)
+                     OR (l.target_id=n.id AND l.source_id=?)
+        ORDER BY n.title
+        """,
+        (nid, nid),
+    ).fetchall()
+    d["linked_notes"] = [row_to_dict(r) for r in linked]
+    d["link_count"] = len(d["linked_notes"])
+    return jsonify(d)
 
 
-@app.route("/api/projects/<int:pid>", methods=["DELETE"])
-def delete_project(pid):
+@app.route("/api/notes/<int:nid>", methods=["DELETE"])
+def delete_note(nid):
     db = get_db()
-    db.execute("DELETE FROM projects WHERE id = ?", (pid,))
+    db.execute("DELETE FROM notes WHERE id=?", (nid,))
     db.commit()
     return "", 204
 
 
 # ---------------------------------------------------------------------------
-# Routes – Tasks
+# Routes – Links
 # ---------------------------------------------------------------------------
 
-@app.route("/api/tasks", methods=["GET"])
-def list_all_tasks():
-    db = get_db()
-    rows = db.execute(
-        """
-        SELECT t.*, p.name AS project_name
-        FROM tasks t
-        JOIN projects p ON t.project_id = p.id
-        ORDER BY t.created_at DESC
-        """
-    ).fetchall()
-    return jsonify([row_to_dict(r) for r in rows])
-
-
-@app.route("/api/projects/<int:pid>/tasks", methods=["GET"])
-def list_tasks(pid):
-    db = get_db()
-    rows = db.execute(
-        "SELECT * FROM tasks WHERE project_id = ? ORDER BY created_at DESC", (pid,)
-    ).fetchall()
-    return jsonify([row_to_dict(r) for r in rows])
-
-
-@app.route("/api/projects/<int:pid>/tasks", methods=["POST"])
-def create_task(pid):
+@app.route("/api/links", methods=["POST"])
+def create_link():
     data = request.get_json(force=True)
-    title = (data.get("title") or "").strip()
-    if not title:
-        return jsonify({"error": "Title is required"}), 400
-    tags = json.dumps(
-        [t.strip() for t in data.get("tags", []) if str(t).strip()]
-    )
+    src = data.get("source_id")
+    tgt = data.get("target_id")
+    if not src or not tgt or src == tgt:
+        return jsonify({"error": "Invalid source or target"}), 400
     db = get_db()
-    cur = db.execute(
-        """INSERT INTO tasks
-           (project_id, title, description, priority, due_date, tags)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (
-            pid,
-            title,
-            data.get("description", ""),
-            data.get("priority", "medium"),
-            data.get("due_date") or None,
-            tags,
-        ),
-    )
-    db.commit()
-    return jsonify(
-        row_to_dict(
-            db.execute("SELECT * FROM tasks WHERE id = ?", (cur.lastrowid,)).fetchone()
+    existing = db.execute(
+        "SELECT * FROM links WHERE (source_id=? AND target_id=?) OR (source_id=? AND target_id=?)",
+        (src, tgt, tgt, src),
+    ).fetchone()
+    if existing:
+        return jsonify(dict(existing)), 200
+    try:
+        cur = db.execute(
+            "INSERT INTO links (source_id, target_id) VALUES (?, ?)", (src, tgt)
         )
-    ), 201
+        db.commit()
+        return jsonify({"id": cur.lastrowid, "source_id": src, "target_id": tgt}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
-@app.route("/api/tasks/<int:tid>", methods=["PUT"])
-def update_task(tid):
-    data = request.get_json(force=True)
-    title = (data.get("title") or "").strip()
-    if not title:
-        return jsonify({"error": "Title is required"}), 400
-    tags = json.dumps(
-        [t.strip() for t in data.get("tags", []) if str(t).strip()]
-    )
+@app.route("/api/links/between/<int:a>/<int:b>", methods=["DELETE"])
+def delete_link_between(a, b):
     db = get_db()
     db.execute(
-        """UPDATE tasks
-           SET title = ?, description = ?, priority = ?, status = ?,
-               due_date = ?, tags = ?
-           WHERE id = ?""",
-        (
-            title,
-            data.get("description", ""),
-            data.get("priority", "medium"),
-            data.get("status", "todo"),
-            data.get("due_date") or None,
-            tags,
-            tid,
-        ),
+        "DELETE FROM links WHERE (source_id=? AND target_id=?) OR (source_id=? AND target_id=?)",
+        (a, b, b, a),
     )
-    db.commit()
-    return jsonify(
-        row_to_dict(
-            db.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
-        )
-    )
-
-
-@app.route("/api/tasks/<int:tid>", methods=["DELETE"])
-def delete_task(tid):
-    db = get_db()
-    db.execute("DELETE FROM tasks WHERE id = ?", (tid,))
     db.commit()
     return "", 204
+
+
+# ---------------------------------------------------------------------------
+# Routes – Graph
+# ---------------------------------------------------------------------------
+
+@app.route("/api/graph")
+def get_graph():
+    db = get_db()
+    notes = db.execute("SELECT id, title, tags FROM notes").fetchall()
+    links = db.execute("SELECT id, source_id, target_id FROM links").fetchall()
+    degree = {}
+    for lnk in links:
+        degree[lnk["source_id"]] = degree.get(lnk["source_id"], 0) + 1
+        degree[lnk["target_id"]] = degree.get(lnk["target_id"], 0) + 1
+    nodes = [
+        {
+            "id": n["id"],
+            "title": n["title"],
+            "tags": json.loads(n["tags"] or "[]"),
+            "degree": degree.get(n["id"], 0),
+        }
+        for n in notes
+    ]
+    edges = [
+        {"id": l["id"], "source": l["source_id"], "target": l["target_id"]}
+        for l in links
+    ]
+    return jsonify({"nodes": nodes, "edges": edges})
 
 
 # ---------------------------------------------------------------------------
