@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zettelkasten</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ── Header ── -->
+  <header id="header">
+    <div class="header-brand">
+      <span class="brand-icon">&#x1F9E0;</span>
+      <h1>Zettelkasten</h1>
+    </div>
+    <div class="header-actions">
+      <button id="new-concept-btn" class="btn btn-primary">
+        <span>+</span> New Concept
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Main Layout ── -->
+  <div id="main-layout">
+
+    <!-- Left: Concept List -->
+    <aside id="concept-list-panel">
+      <div class="panel-header">
+        <input
+          type="text"
+          id="search-input"
+          placeholder="&#x1F50D; Search concepts…"
+          autocomplete="off"
+        />
+      </div>
+      <div id="concept-list">
+        <div class="empty-state" id="list-empty">
+          <p>No concepts yet.</p>
+          <p>Click <strong>+ New Concept</strong> to begin.</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center: Editor -->
+    <main id="editor-panel">
+      <div class="empty-state" id="editor-placeholder">
+        <div class="placeholder-icon">&#x1F4D6;</div>
+        <p>Select a concept to edit</p>
+        <p>or create a new one.</p>
+      </div>
+
+      <div id="concept-editor" hidden>
+        <div class="editor-topbar">
+          <input
+            type="text"
+            id="concept-title"
+            class="title-input"
+            placeholder="Concept Title"
+            autocomplete="off"
+          />
+          <div class="editor-actions">
+            <button id="save-btn" class="btn btn-primary">Save</button>
+            <button id="delete-btn" class="btn btn-danger">Delete</button>
+          </div>
+        </div>
+
+        <!-- Tags -->
+        <div class="tags-bar">
+          <div id="tags-display"></div>
+          <input
+            type="text"
+            id="tag-input"
+            placeholder="Add tag, press Enter…"
+            autocomplete="off"
+          />
+        </div>
+
+        <!-- Editor Tabs -->
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="write">Write</button>
+          <button class="tab-btn" data-tab="preview">Preview</button>
+          <button class="tab-btn" data-tab="links">Links</button>
+        </div>
+
+        <!-- Write Tab -->
+        <div id="write-tab" class="tab-content active">
+          <textarea
+            id="concept-content"
+            placeholder="Write your thoughts in Markdown…&#10;&#10;Use **bold**, *italic*, ## headings, - lists, and more."
+          ></textarea>
+        </div>
+
+        <!-- Preview Tab -->
+        <div id="preview-tab" class="tab-content">
+          <div id="preview-content" class="markdown-body"></div>
+        </div>
+
+        <!-- Links Tab -->
+        <div id="links-tab" class="tab-content">
+          <div class="links-panel">
+            <div class="link-create-section">
+              <h3>Connect to another concept</h3>
+              <div class="link-create-row">
+                <select id="link-target-select">
+                  <option value="">Select concept…</option>
+                </select>
+                <input
+                  type="text"
+                  id="link-label-input"
+                  placeholder="Relationship (optional)"
+                />
+                <button id="add-link-btn" class="btn btn-primary">Link</button>
+              </div>
+            </div>
+            <div class="existing-links-section">
+              <h3>Existing connections</h3>
+              <div id="existing-links">
+                <p class="muted">No connections yet.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right: Graph + Chat -->
+    <aside id="right-panel">
+      <div class="right-tab-bar">
+        <button class="right-tab-btn active" data-panel="graph">
+          &#x1F578; Graph
+        </button>
+        <button class="right-tab-btn" data-panel="chat">
+          &#x1F4AC; AI Chat
+        </button>
+      </div>
+
+      <!-- Graph View -->
+      <div id="graph-view" class="right-panel-content active">
+        <div id="graph-container">
+          <svg id="graph-svg"></svg>
+          <div id="graph-empty" class="empty-state graph-empty" hidden>
+            <p>Add concepts to see the graph.</p>
+          </div>
+        </div>
+        <div class="graph-controls">
+          <button id="reset-zoom-btn" class="btn btn-sm">Reset View</button>
+          <button id="refresh-graph-btn" class="btn btn-sm">Refresh</button>
+        </div>
+      </div>
+
+      <!-- Chat View -->
+      <div id="chat-view" class="right-panel-content">
+        <div id="chat-messages">
+          <div class="chat-welcome">
+            <p>&#x1F9E0; Ask me anything about your knowledge base!</p>
+            <p class="muted">I can find connections, summarize concepts, or suggest new ideas.</p>
+          </div>
+        </div>
+        <div class="chat-bottom">
+          <label class="context-toggle">
+            <input type="checkbox" id="include-context" checked />
+            <span>Include knowledge base context</span>
+          </label>
+          <div class="chat-input-row">
+            <textarea
+              id="chat-input"
+              placeholder="Ask about your knowledge base…"
+              rows="2"
+            ></textarea>
+            <button id="send-chat-btn" class="btn btn-primary">Send</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+  </div><!-- /#main-layout -->
+
+</div><!-- /#app -->
+
+<!-- Toast notification -->
+<div id="toast" class="toast" hidden></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
